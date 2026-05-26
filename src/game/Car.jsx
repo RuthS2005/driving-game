@@ -1,57 +1,60 @@
-import { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useKeyboardControls } from '@react-three/drei'
 import * as THREE from 'three'
 
-const Car = ({ setMistakes, setCurrentSpeed }) => {
+const Car = ({ setMistakes, speedRef }) => {
   const meshRef = useRef()
   const [, getKeys] = useKeyboardControls()
-  const speed = useRef(0)
   const hasStoppedAtSign = useRef(false)
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const { forward, backward, left, right } = getKeys()
 
+    // הגנה למקרה ש-speedRef עדיין לא הגיע
+    if (!speedRef) return
+
     // לוגיקת תנועה
-    if (forward) speed.current += 0.005
-    if (backward) speed.current -= 0.005
-    speed.current *= 0.97
+    if (forward) speedRef.current += 0.005
+    if (backward) speedRef.current -= 0.005
+    speedRef.current *= 0.97
     
-    // סיבוב
-    if (Math.abs(speed.current) > 0.01) {
+    // סיבוב הרכב
+    if (Math.abs(speedRef.current) > 0.01) {
       if (left) meshRef.current.rotation.y += 0.03
       if (right) meshRef.current.rotation.y -= 0.03
     }
 
-    meshRef.current.position.x += Math.sin(meshRef.current.rotation.y) * speed.current
-    meshRef.current.position.z += Math.cos(meshRef.current.rotation.y) * speed.current
+    // עדכון מיקום
+    meshRef.current.position.x += Math.sin(meshRef.current.rotation.y) * speedRef.current
+    meshRef.current.position.z += Math.cos(meshRef.current.rotation.y) * speedRef.current
 
-    // עדכון המהירות ל-UI
-    setCurrentSpeed(speed.current)
-
-    // --- תיקון מצלמה (מבט מאחורי הרכב) ---
+    // מצלמה עוקבת חלקה
     const carPos = meshRef.current.position
-    const idealOffset = new THREE.Vector3(0, 3, -7) // 3 מטר מעל, 7 מאחור
-    idealOffset.applyQuaternion(meshRef.current.quaternion) // מסובב את האופסט לפי כיוון הרכב
+    const idealOffset = new THREE.Vector3(0, 3, -7)
+    idealOffset.applyQuaternion(meshRef.current.quaternion)
     idealOffset.add(carPos)
 
     state.camera.position.lerp(idealOffset, 0.1)
     state.camera.lookAt(carPos.x, carPos.y + 1, carPos.z)
 
-    // --- לוגיקת תאוריה (בדיקת תמרור עצור) ---
-    // נניח שיש תמרור במיקום Z=20
-    const distToSign = meshRef.current.position.distanceTo(new THREE.Vector3(0, 0, 20))
-    if (distToSign < 3) {
-       if (speed.current < 0.001) {
-         if (!hasStoppedAtSign.current) {
-            console.log("עצרת יפה מאוד!")
-            hasStoppedAtSign.current = true
-         }
-       }
-    } else if (distToSign < 1 && speed.current > 0.05 && !hasStoppedAtSign.current) {
-        // אם עבר את התמרור מהר מדי מבלי לעצור
+    // לוגיקת תמרור עצור
+    const currentZ = meshRef.current.position.z
+    const signZ = 20 
+    const absoluteSpeed = Math.abs(speedRef.current)
+
+    if (currentZ > signZ - 4 && currentZ <= signZ) {
+      if (absoluteSpeed < 0.005 && !hasStoppedAtSign.current) {
+        console.log("עצרת יפה מאוד!")
+        hasStoppedAtSign.current = true
+      }
+    }
+
+    if (currentZ > signZ) {
+      if (!hasStoppedAtSign.current) {
         setMistakes(prev => prev + 1)
-        hasStoppedAtSign.current = true // מונע טעויות כפולות על אותו תמרור
+        hasStoppedAtSign.current = true
+      }
     }
   })
 
